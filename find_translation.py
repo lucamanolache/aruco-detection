@@ -1,8 +1,8 @@
 import argparse
 import imutils
 import cv2
-import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
 DEBUG = False
 DICTIONARY = cv2.aruco.DICT_5X5_100
@@ -11,7 +11,7 @@ if DEBUG:
     IMAGE = "images/test1.png"
     frame = cv2.imread(IMAGE)
 else:
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(4)
 
 aruco_dict = cv2.aruco.Dictionary_get(DICTIONARY)
 parameters = cv2.aruco.DetectorParameters_create()
@@ -28,7 +28,13 @@ graph_data_x = []
 graph_data_t = []
 graph_data_r = []
 
-while True:
+fig = plt.figure()
+
+translation = plt.subplot(121)
+rotation = plt.subplot(122)
+
+
+def loop(i):
     if not DEBUG:
         ret, frame = cap.read()
 
@@ -47,10 +53,11 @@ while True:
                                                                            dist_matrix)
 
             if ids[i] == 24:
-                graph_data_x.append(x)
-                graph_data_r.append(rvec[0])
+                graph_data_r.append(rvec[0][0])
                 graph_data_t.append(tvec[0][0])
-                x += 1
+
+                translation.plot(graph_data_t, label="Translation")
+                rotation.plot(graph_data_r, label="Rotation")
 
             # Draw a square around the markers
             cv2.aruco.drawDetectedMarkers(frame, corners)
@@ -58,14 +65,9 @@ while True:
             # Draw Axis
             cv2.aruco.drawAxis(frame, camera_matrix, dist_matrix, rvec, tvec, 0.01)
 
-    cv2.imshow('frame', frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+    cv2.imshow("Frame", frame)
+    cv2.waitKey(1)
 
-cv2.destroyAllWindows()
 
-print(graph_data_x)
-print(graph_data_t)
-
-plt.plot(graph_data_x, graph_data_t)
+ani = animation.FuncAnimation(fig, loop)
 plt.show()
