@@ -34,7 +34,7 @@ translation = plt.subplot(121)
 rotation = plt.subplot(122)
 
 
-def loop(i):
+def loop(_i):
     if not DEBUG:
         ret, frame = cap.read()
 
