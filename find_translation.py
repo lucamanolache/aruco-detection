@@ -1,6 +1,7 @@
 import argparse
 import imutils
 import cv2
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
@@ -12,6 +13,7 @@ if DEBUG:
     frame = cv2.imread(IMAGE)
 else:
     cap = cv2.VideoCapture(4)
+    print(cap.isOpened())
 
 aruco_dict = cv2.aruco.Dictionary_get(DICTIONARY)
 parameters = cv2.aruco.DetectorParameters_create()
@@ -33,41 +35,74 @@ fig = plt.figure()
 translation = plt.subplot(121)
 rotation = plt.subplot(122)
 
+real_points = np.array([[[0., 0., 0.], [0., 4.6, 0.], [4.6, 4.6, 0.], [4.6, 0., 0.]],
+                        [[0., 15.1, 0.], [0, 19.7, 0.], [4.6, 19.7, 0.], [4.6, 15.1, 0.]],
+                        [[16.1, 0., 0.], [16.1, 4.6, 0.], [20.7, 4.6, 0.], [20.7, 0., 0.]],
+                        [[16.1, 15.1, 0.], [16.1, 19.7, 0.], [20.7, 19.7, 0.], [20.7, 15.1, 0.]]], dtype=np.float32)
+
+real_points_2d = np.array([[0., 0.], [0., 4.6], [4.6, 4.6], [4.6, 0.],
+                           [16.1, 0.], [16.1, 4.6], [20.7, 4.6], [20.7, 0.],
+                          [0., 15.1], [0, 19.7], [4.6, 19.7], [4.6, 15.1],
+                          [16.1, 15.1], [16.1, 19.7], [20.7, 19.7], [20.7, 15.1]], dtype=np.float32)
+
+board = cv2.aruco.Board_create(real_points, aruco_dict, np.array([24, 42, 69, 48]))
+
+rvecs, tvecs = None, None
+
+
+def which(x, values):
+    indices = []
+    for ii in list(values):
+        if ii in x:
+            indices.append(list(x).index(ii))
+    return indices
+
 
 def loop(_i):
     if not DEBUG:
         ret, frame = cap.read()
 
-    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(frame, aruco_dict,
-                                                              parameters=parameters,
-                                                              cameraMatrix=camera_matrix,
-                                                              distCoeff=dist_matrix)
+    corners, ids, rejected_img_points = cv2.aruco.detectMarkers(frame, aruco_dict,
+                                                                parameters=parameters,
+                                                                cameraMatrix=camera_matrix,
+                                                                distCoeff=dist_matrix)
+
+    corners, ids, rejected_img_points, recovered_ids = cv2.aruco.refineDetectedMarkers(
+        image=frame,
+        board=board,
+        detectedCorners=corners,
+        detectedIds=ids,
+        rejectedCorners=rejected_img_points,
+        cameraMatrix=camera_matrix,
+        distCoeffs=dist_matrix)
 
     cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+    if len(corners) == 4:
+        pose, _rvec, _tvec = cv2.aruco.estimatePoseBoard(corners, ids, board, camera_matrix, dist_matrix, rvecs, tvecs)
 
-    if len(corners) > 0:
-        for i in range(0, len(ids)):
-            # Estimate pose of each marker and return the values rvec and tvec---(different from those of camera
-            # coefficients)
-            rvec, tvec, markerPoints = cv2.aruco.estimatePoseSingleMarkers(corners[i], 0.02, camera_matrix,
-                                                                           dist_matrix)
+        zipped = zip(ids, corners)
+        zipped = sorted(zipped)
 
-            if ids[i] == 24:
-                graph_data_r.append(rvec[0][0])
-                graph_data_t.append(tvec[0][0])
+        corners = [i[1] for i in zipped]
 
-                translation.plot(graph_data_t, label="Translation")
-                rotation.plot(graph_data_r, label="Rotation")
+        these_res_corners = np.concatenate(corners, axis=1)
 
-            # Draw a square around the markers
-            cv2.aruco.drawDetectedMarkers(frame, corners)
+        ret, mask = cv2.findHomography(real_points_2d, these_res_corners, cv2.RANSAC, 5.0)
 
-            # Draw Axis
-            cv2.aruco.drawAxis(frame, camera_matrix, dist_matrix, rvec, tvec, 0.01)
+        rect = np.array([[[0, 0],
+                          [19.8, 0],
+                          [19.8, 20.8],
+                          [0, 20.8]]], dtype=np.float32)
+
+        new_rect = cv2.perspectiveTransform(rect, ret, (frame.shape[1], frame.shape[0]))
+        trans = cv2.getPerspectiveTransform(new_rect, rect)
+
+        frame = cv2.warpPerspective(frame, trans, (1000, 1000), flags=cv2.INTER_LINEAR)
+        frame = frame[0:21, 0:20]
 
     cv2.imshow("Frame", frame)
     cv2.waitKey(1)
 
 
-ani = animation.FuncAnimation(fig, loop)
-plt.show()
+while True:
+    loop(0)
